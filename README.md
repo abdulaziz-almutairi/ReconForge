@@ -30,16 +30,12 @@ git clone https://github.com/abdulaziz-almutairi/ReconForge.git
 cd ReconForge
 ```
 
-----
-
 ### 2. Install Dependencies
 
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
-
-----
 
 ### 3. Run Reconnaissance
 
