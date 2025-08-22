@@ -1,0 +1,164 @@
+#!/bin/bash
+
+# ==================== ReconForge ====================
+# ReconForge - Advanced Reconnaissance Framework
+# Author: dr34m
+# ====================================================
+
+# ==================== COLORS ====================
+RED="\e[31m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+CYAN="\e[36m"
+RESET="\e[0m"
+
+# ==================== VARIABLES ====================
+flags="$1"
+domain="$2"
+TIMESTAMP=$(date +%F_%H-%M-%S)
+OUTDIR="results/${domain}/${TIMESTAMP}"
+TECHDIR="$OUTDIR/tech"
+
+mkdir -p "$OUTDIR" "$TECHDIR"
+
+# ==================== BANNER ====================
+banner() {
+    echo -e "${CYAN}"
+    echo "======================================="
+    echo "      🛠️  ReconForge - Recon Tool      "
+    echo "          Author: dr34m                "
+    echo "          https://x.com/x_4ziz         "
+    echo "======================================="
+    echo -e "${RESET}"
+}
+
+# ==================== HELP ====================
+usage() {
+    banner
+    echo -e "${YELLOW}Usage:${RESET} ./ReconForge.sh [flags] domain.com"
+    echo -e "Flags (can combine e.g. -spvtiu):"
+    echo -e "  ${CYAN}-s${RESET}   Subdomain enumeration"
+    echo -e "  ${CYAN}-p${RESET}   Port scan"
+    echo -e "  ${CYAN}-t${RESET}   Tech fingerprints"
+    echo -e "  ${CYAN}-v${RESET}   Vulnerability checks"
+    echo -e "  ${CYAN}-u${RESET}   Historical URLs (gau + waybackurls)"
+    echo -e "  ${CYAN}-i${RESET}   Extract unique IPs"
+    echo -e "  ${CYAN}-a${RESET}   Run all"
+    echo -e "  ${CYAN}-h${RESET}   Help"
+    exit 0
+}
+
+if [[ "$flags" == "-h" || -z "$domain" ]]; then
+    usage
+fi
+
+# ==================== FUNCTIONS ====================
+
+subdomains() {
+    echo -e "${BLUE}[*] Enumerating Subdomains...${RESET}"
+    subfinder -d "$domain" -silent > "$OUTDIR/subfinder"
+    assetfinder -subs-only "$domain" > "$OUTDIR/assetfinder"
+    sublist3r -d $domain -o "$OUTDIR/sublist3r.txt"
+    amass enum -passive -d $domain -o "$OUTDIR/amass"
+
+    cat "$OUTDIR/subfinder" "$OUTDIR/assetfinder" "$OUTDIR/amass" "$OUTDIR/sublist3r.txt" | sort -u > "$OUTDIR/subdomains.txt"
+    rm -f "$OUTDIR/subfinder" "$OUTDIR/assetfinder" "$OUTDIR/amass" "$OUTDIR/sublist3r.txt"
+    echo -e "${GREEN}[+] Total subdomains: $(wc -l < "$OUTDIR/subdomains.txt")${RESET}"
+
+    echo -e "${BLUE}[*] Probing alive subdomains...${RESET}"
+    if [[ -s "$OUTDIR/subdomains.txt" ]]; then
+        cat "$OUTDIR/subdomains.txt" | httpx-toolkit -silent > "$OUTDIR/alive.txt"
+        echo -e "${GREEN}[+] Alive hosts: $(wc -l < "$OUTDIR/alive.txt")${RESET}"
+    else
+        touch "$OUTDIR/alive.txt"
+        echo -e "${YELLOW}[-] No subdomains found.${RESET}"
+    fi
+}
+
+portScan() {
+    echo -e "${BLUE}[*] Scanning ports for $domain...${RESET}"
+    naabu -host "$domain" -o "$OUTDIR/ports.txt" -silent
+    echo -e "${GREEN}[+] Ports saved to $OUTDIR/ports.txt${RESET}"
+}
+
+techFingerprints() {
+    echo -e "${BLUE}[*] Extracting technologies & categorizing...${RESET}"
+    if [[ ! -s "$OUTDIR/alive.txt" ]]; then
+        echo -e "${YELLOW}[-] No alive hosts found. Skipping tech fingerprints.${RESET}"
+        return
+    fi
+    while read -r url; do
+        techs=$(httpx-toolkit -silent -title -status-code -tech-detect -u "$url")
+        echo "$techs" >> "$OUTDIR/tech/all.txt"
+        [[ "$techs" =~ WordPress ]] && echo "$url" >> "$TECHDIR/wordpress.txt"
+        [[ "$techs" =~ Drupal ]] && echo "$url" >> "$TECHDIR/drupal.txt"
+        [[ "$techs" =~ Apache ]] && echo "$url" >> "$TECHDIR/apache.txt"
+        [[ "$techs" =~ nginx ]] && echo "$url" >> "$TECHDIR/nginx.txt"
+        [[ "$techs" =~ IIS ]] && echo "$url" >> "$TECHDIR/iis.txt"
+    done < "$OUTDIR/alive.txt"
+    echo -e "${GREEN}[+] Tech fingerprints saved in $TECHDIR${RESET}"
+}
+
+vulnChecks() {
+    echo -e "${BLUE}[*] Running quick vulnerability checks...${RESET}"
+    if [[ ! -s "$OUTDIR/alive.txt" ]]; then
+        echo -e "${YELLOW}[-] No alive hosts found. Skipping vuln checks.${RESET}"
+        return
+    fi
+    > "$OUTDIR/vuln.txt"
+    while read -r url; do
+        [[ $(curl -sS --fail --max-time 5 -k "$url/.git/config") =~ repositoryformatversion ]] && echo -e "${RED}[!] Exposed .git at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
+        [[ $(curl -sS --fail --max-time 5 -k "$url/.env") =~ "=" ]] && echo -e "${RED}[!] Exposed .env at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
+        [[ $(curl -sS --fail --max-time 5 -k "$url/phpinfo.php") =~ "phpinfo()" ]] && echo -e "${RED}[!] phpinfo.php at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
+        [[ $(curl -sS --fail --max-time 5 -k "$url/config.php") =~ "DB_" ]] && echo -e "${RED}[!] config.php at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
+        [[ $(curl -sS --fail --max-time 5 -k "$url/wp-login.php") =~ "WordPress" ]] && echo -e "${YELLOW}[!] WordPress login at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
+    done < "$OUTDIR/alive.txt"
+    echo -e "${GREEN}[+] Vuln checks saved to $OUTDIR/vuln.txt${RESET}"
+}
+
+historicalURLs() {
+    echo -e "${BLUE}[*] Collecting historical URLs (gau + waybackurls)...${RESET}"
+    touch "$OUTDIR/urls.txt"
+    gau "$domain" 2>/dev/null >> "$OUTDIR/urls.txt"
+    waybackurls "$domain" >> "$OUTDIR/urls.txt"
+    sort -u "$OUTDIR/urls.txt" -o "$OUTDIR/urls.txt"
+    echo -e "${GREEN}[+] Historical URLs saved to $OUTDIR/urls.txt${RESET}"
+}
+
+extractIPs() {
+    echo -e "${BLUE}[*] Extracting unique IPs for alive subdomains...${RESET}"
+    if [[ ! -s "$OUTDIR/alive.txt" ]]; then
+        echo -e "${YELLOW}[-] No alive hosts found. Skipping IP extraction.${RESET}"
+        return
+    fi
+    > "$OUTDIR/ips.txt"
+    while read -r url; do
+        host=$(echo "$url" | sed -E 's|https?://||' | cut -d'/' -f1)
+        ip=$(dig +short "$host" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+        [[ -n "$ip" ]] && echo "$ip"
+    done < "$OUTDIR/alive.txt" | sort -u > "$OUTDIR/ips.txt"
+    echo -e "${GREEN}[+] Unique IPs saved to $OUTDIR/ips.txt${RESET}"
+}
+
+# ==================== FLAG HANDLING ====================
+banner
+
+# Expand -a to all flags
+if [[ "$flags" == *"a"* ]]; then
+    flags="sptvui"
+fi
+
+# Loop through flags (ignore leading -)
+for (( i=0; i<${#flags}; i++ )); do
+    case "${flags:$i:1}" in
+        s) subdomains ;;
+        p) portScan ;;
+        t) techFingerprints ;;
+        v) vulnChecks ;;
+        u) historicalURLs ;;
+        i) extractIPs ;;
+        *) echo -e "${RED}[-] Unknown flag: -${flags:$i:1}${RESET}"; usage ;;
+    esac
+done
+
