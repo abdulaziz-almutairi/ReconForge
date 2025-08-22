@@ -107,13 +107,36 @@ vulnChecks() {
         return
     fi
     > "$OUTDIR/vuln.txt"
+
     while read -r url; do
-        [[ $(curl -sS --fail --max-time 5 -k "$url/.git/config") =~ repositoryformatversion ]] && echo -e "${RED}[!] Exposed .git at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
-        [[ $(curl -sS --fail --max-time 5 -k "$url/.env") =~ "=" ]] && echo -e "${RED}[!] Exposed .env at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
-        [[ $(curl -sS --fail --max-time 5 -k "$url/phpinfo.php") =~ "phpinfo()" ]] && echo -e "${RED}[!] phpinfo.php at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
-        [[ $(curl -sS --fail --max-time 5 -k "$url/config.php") =~ "DB_" ]] && echo -e "${RED}[!] config.php at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
-        [[ $(curl -sS --fail --max-time 5 -k "$url/wp-login.php") =~ "WordPress" ]] && echo -e "${YELLOW}[!] WordPress login at $url${RESET}" | tee -a "$OUTDIR/vuln.txt"
+        # Helper: silent curl with success check
+        check_vuln() {
+            local target="$1"
+            local pattern="$2"
+            local msg="$3"
+            local method="equals"  # or "contains"
+
+            response=$(curl -sS --fail -k --max-time 5 "$target" 2>/dev/null)
+            if [[ $? -eq 0 ]]; then
+                if [[ "$method" == "contains" && "$response" == *"$pattern"* ]] || 
+                   [[ "$method" == "equals" && "$response" =~ ^$pattern$ ]]; then
+                    echo -e "${RED}[!] $msg: $target${RESET}" | tee -a "$OUTDIR/vuln.txt"
+                fi
+            fi
+        }
+
+        # Test each endpoint safely
+        check_vuln "$url/.git/config" "repositoryformatversion" "Exposed .git"
+        check_vuln "$url/.env" "=" "Exposed .env"
+        check_vuln "$url/phpinfo.php" "phpinfo()" "Exposed phpinfo.php"
+        check_vuln "$url/config.php" "DB_" "Exposed config.php"
+
+        # WordPress login (allow 200 even if not full match)
+        if curl -s -o /dev/null -w "%{http_code}" -k "$url/wp-login.php" | grep -q "200"; then
+            echo -e "${YELLOW}[!] WordPress login page found: $url/wp-login.php${RESET}" | tee -a "$OUTDIR/vuln.txt"
+        fi
     done < "$OUTDIR/alive.txt"
+
     echo -e "${GREEN}[+] Vuln checks saved to $OUTDIR/vuln.txt${RESET}"
 }
 
