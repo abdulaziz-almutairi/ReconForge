@@ -1,9 +1,9 @@
-# 🔧 ReconForge - Advanced Reconnaissance Framework
+# 🔧 ReconForge - Advanced Reconnaissance Tool
 
 ![Shell Script](https://img.shields.io/badge/language-Bash-yellow)
 ![Tool Type](https://img.shields.io/badge/category-reconnaissance-purple)
 
-**ReconForge** is a powerful, modular reconnaissance automation framework designed for bug bounty hunters and security researchers. Built in Bash, it streamlines subdomain discovery, port scanning, technology fingerprinting, vulnerability checks, and more — all from a single command.
+**ReconForge** is a powerful, modular reconnaissance automation tool designed for bug bounty hunters and security researchers. Built in Bash, it streamlines subdomain discovery, port scanning, technology fingerprinting, vulnerability checks, and more — all from a single command.
 
 🚀 _From passive enumeration to active probing — ReconForge has you covered._
 
@@ -30,7 +30,7 @@ git clone https://github.com/abdulaziz-almutairi/ReconForge.git
 cd ReconForge
 ```
 
----
+----
 
 ### 2. Install Dependencies
 
@@ -39,7 +39,7 @@ chmod +x install.sh
 ./install.sh
 ```
 
----
+----
 
 ### 3. Run Reconnaissance
 
@@ -53,7 +53,7 @@ chmod +x ReconForge.sh
 ./ReconForge.sh -st example.com
 ```
 
----
+----
 
 ### Flags
 
