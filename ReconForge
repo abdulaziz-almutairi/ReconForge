@@ -59,11 +59,11 @@ subdomains() {
     echo -e "${BLUE}[*] Enumerating Subdomains...${RESET}"
     subfinder -d "$domain" -silent > "$OUTDIR/subfinder"
     assetfinder -subs-only "$domain" > "$OUTDIR/assetfinder"
-    sublist3r -d $domain -o "$OUTDIR/sublist3r.txt"
-    amass enum -passive -d $domain -o "$OUTDIR/amass"
+#    amass enum -d $domain | tee -a "$(pwd)/$OUTDIR/amass.txt"
+    sublist3r -d $domain -o "$(pwd)/$OUTDIR/sublist3r.txt"
 
-    cat "$OUTDIR/subfinder" "$OUTDIR/assetfinder" "$OUTDIR/amass" "$OUTDIR/sublist3r.txt" | sort -u > "$OUTDIR/subdomains.txt"
-    rm -f "$OUTDIR/subfinder" "$OUTDIR/assetfinder" "$OUTDIR/amass" "$OUTDIR/sublist3r.txt"
+    cat "$OUTDIR/subfinder" "$OUTDIR/assetfinder" "$OUTDIR/sublist3r.txt" | sort -u > "$OUTDIR/subdomains.txt"
+    rm -f "$OUTDIR/subfinder" "$OUTDIR/assetfinder" "$OUTDIR/sublist3r.txt"
     echo -e "${GREEN}[+] Total subdomains: $(wc -l < "$OUTDIR/subdomains.txt")${RESET}"
 
     echo -e "${BLUE}[*] Probing alive subdomains...${RESET}"
